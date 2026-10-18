@@ -119,14 +119,16 @@ function add(m){
  time.textContent=m.time||"";
  el.append(time);
 
+ let del=null;
  if(m.sender===nick && m.id){
-  const del=document.createElement("button");
+  del=document.createElement("button");
   del.type="button";
-  del.textContent="🗑️";
+  del.textContent="Apagar mensagem";
   del.title="Apagar mensagem";
-  del.setAttribute("aria-label","Apagar mensagem");
-  del.style.cssText="border:0;background:transparent;cursor:pointer;padding:5px;font-size:16px";
-  del.addEventListener("click",()=>{
+  del.className="delete-message";
+  del.style.cssText="display:none;margin-top:7px;border:1px solid #633333;background:#241515;color:#ff8585;border-radius:9px;padding:7px 12px;font-size:13px;cursor:pointer";
+  del.addEventListener("click",e=>{
+   e.stopPropagation();
    if(!confirm("Apagar esta mensagem para os dois?"))return;
    if(ws && ws.readyState===WebSocket.OPEN){
     ws.send(JSON.stringify({action:"delete",id:m.id,sender:nick}));
@@ -137,20 +139,33 @@ function add(m){
   el.append(del);
  }
 
- let startX=0,startY=0;
+ let startX=0,startY=0,holdTimer=null,held=false;
  el.addEventListener("touchstart",e=>{
   startX=e.changedTouches[0].clientX;
   startY=e.changedTouches[0].clientY;
+  held=false;
+  clearTimeout(holdTimer);
+  if(del){
+   holdTimer=setTimeout(()=>{
+    del.style.display="inline-block";
+    held=true;
+   },2000);
+  }
+ },{passive:true});
+ el.addEventListener("touchmove",e=>{
+  const t=e.touches[0];
+  if(t && (Math.abs(t.clientX-startX)>12 || Math.abs(t.clientY-startY)>12)){
+   clearTimeout(holdTimer);
+  }
  },{passive:true});
  el.addEventListener("touchend",e=>{
+  clearTimeout(holdTimer);
   const dx=e.changedTouches[0].clientX-startX;
   const dy=e.changedTouches[0].clientY-startY;
-  if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.3)setReply(m);
+  if(!held && Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.3)setReply(m);
  },{passive:true});
- el.addEventListener("contextmenu",e=>{
-  e.preventDefault();
-  setReply(m);
- });
+ el.addEventListener("touchcancel",()=>clearTimeout(holdTimer),{passive:true});
+ el.addEventListener("contextmenu",e=>e.preventDefault());
  $("#messages").append(el);
  $("#messages").scrollTop=$("#messages").scrollHeight;
 }
