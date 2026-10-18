@@ -29,6 +29,32 @@ button{border:0;border-radius:50%;width:43px;height:43px;flex-shrink:0;backgroun
 #file{display:none}
 #hint{font-size:11px;color:#888;text-align:center;padding:4px}
 </style>
+
+<style>
+#antiPrintToast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 20px);
+  background: #171717;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 14px;
+  padding: 14px 20px;
+  font: 700 15px system-ui, sans-serif;
+  z-index: 999999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+  white-space: nowrap;
+  box-shadow: 0 8px 28px #0008;
+}
+#antiPrintToast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+</style>
+
 </head>
 <body>
 <div class="app">
@@ -302,5 +328,30 @@ connect();
 })();
 
 </script>
+<div id="antiPrintToast" role="status">ANTI-PRINT ATIVO 😴</div>
+
+<script>
+(() => {
+  const toast = document.getElementById("antiPrintToast");
+  let timer;
+  function showAntiPrint() {
+    toast.classList.add("show");
+    clearTimeout(timer);
+    timer = setTimeout(() => toast.classList.remove("show"), 2200);
+  }
+
+  // Detecta alguns atalhos de captura em teclados físicos.
+  document.addEventListener("keydown", e => {
+    if (e.key === "PrintScreen" ||
+        (e.ctrlKey && e.shiftKey && ["S", "s"].includes(e.key))) {
+      showAntiPrint();
+    }
+  });
+
+  // A impressão pode ser detectada; capturas de tela, não de forma confiável.
+  window.addEventListener("beforeprint", showAntiPrint);
+})();
+</script>
+
 </body>
 </html>
