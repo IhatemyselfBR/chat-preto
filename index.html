@@ -353,5 +353,52 @@ connect();
 })();
 </script>
 
+
+<script id="antiPrintProtectionV2">
+(() => {
+  const toast = document.getElementById("antiPrintToast");
+  if (!toast) return;
+
+  let hideTimer;
+  function showAntiPrint() {
+    toast.textContent = "ANTI-PRINT ATIVO 😴";
+    toast.classList.add("show");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => toast.classList.remove("show"), 2500);
+  }
+
+  // Atalhos detectáveis em alguns teclados/navegadores.
+  document.addEventListener("keydown", e => {
+    if (e.key === "PrintScreen" ||
+        (e.ctrlKey && e.shiftKey && ["S", "s", "P", "p"].includes(e.key))) {
+      showAntiPrint();
+    }
+  }, true);
+
+  // Aviso ao abrir a caixa de impressão.
+  window.addEventListener("beforeprint", showAntiPrint);
+
+  // Dificulta o menu de contexto e o arrasto direto de imagens.
+  document.addEventListener("contextmenu", e => {
+    if (e.target.closest("img, .msg")) {
+      e.preventDefault();
+      showAntiPrint();
+    }
+  }, true);
+
+  document.addEventListener("dragstart", e => {
+    if (e.target.closest("img")) {
+      e.preventDefault();
+      showAntiPrint();
+    }
+  }, true);
+
+  // Dificulta selecionar/copiar conteúdo visual do chat.
+  document.addEventListener("selectstart", e => {
+    if (e.target.closest("#messages")) e.preventDefault();
+  }, true);
+})();
+</script>
+
 </body>
 </html>
