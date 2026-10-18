@@ -8,17 +8,26 @@
 *{box-sizing:border-box}
 body{margin:0;background:#0b0b0b;color:#eee;font-family:Arial,sans-serif}
 .app{max-width:520px;height:100dvh;margin:auto;display:flex;flex-direction:column}
-header{padding:17px;background:#151515;border-bottom:1px solid #292929}
+header{padding:16px;background:#151515;border-bottom:1px solid #292929}
 header strong{font-size:18px}
 #status{font-size:12px;color:#aaa;margin-top:5px}
 #messages{flex:1;overflow:auto;padding:15px;display:flex;flex-direction:column;gap:10px}
-.msg{max-width:84%;align-self:flex-start;background:#242424;border-radius:13px;padding:10px 13px;overflow-wrap:anywhere}
+.msg{max-width:86%;align-self:flex-start;background:#242424;border-radius:14px;padding:10px 12px;overflow-wrap:anywhere;touch-action:pan-y}
 .msg.me{align-self:flex-end;background:#174b3b}
 .sender{font-size:12px;color:#b5d7c8;margin-bottom:5px}
 .time{text-align:right;color:#aaa;font-size:10px;margin-top:5px}
-form{display:flex;gap:8px;padding:12px;background:#151515}
+.quote{border-left:3px solid #aaa;background:#0002;padding:7px;margin-bottom:8px;border-radius:4px;font-size:12px;color:#ddd}
+.quote b{display:block;color:#b5d7c8;margin-bottom:3px}
+.sticker{display:block;max-width:190px;max-height:220px;object-fit:contain;border-radius:8px}
+#replybar{display:none;padding:9px 13px;background:#202020;border-left:3px solid #aaa;align-items:center;gap:10px}
+#replytext{flex:1;min-width:0;font-size:12px;color:#ccc;overflow-wrap:anywhere}
+#cancel{background:none;color:#ddd;width:32px;height:32px;font-size:20px}
+form{display:flex;gap:7px;align-items:center;padding:10px;background:#151515}
 input{flex:1;min-width:0;border:0;border-radius:25px;padding:14px;background:#292929;color:white;font-size:16px;outline:none}
-button{border:0;border-radius:50%;width:46px;height:46px;background:#eee;font-size:20px}
+button{border:0;border-radius:50%;width:43px;height:43px;flex-shrink:0;background:#eee;color:#111;font-size:20px}
+#emoji{background:#292929;color:#eee}
+#file{display:none}
+#hint{font-size:11px;color:#888;text-align:center;padding:4px}
 </style>
 </head>
 <body>
@@ -28,70 +37,153 @@ button{border:0;border-radius:50%;width:46px;height:46px;background:#eee;font-si
 <div id="status">Conectando...</div>
 </header>
 <div id="messages"></div>
+<div id="hint">Arraste uma mensagem para o lado para responder</div>
+<div id="replybar">
+<div id="replytext"></div>
+<button id="cancel" type="button" aria-label="Cancelar resposta">×</button>
+</div>
 <form id="form">
-<input id="message" placeholder="Mensagem..." autocomplete="off" maxlength="2000" required>
+<button id="emoji" type="button" aria-label="Escolher figurinha">🙂</button>
+<input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+<input id="message" placeholder="Mensagem..." autocomplete="off" maxlength="2000">
 <button aria-label="Enviar">➤</button>
 </form>
 </div>
 <script>
-const SERVER = "wss://arcade-riding-rise-historical.trycloudflare.com/ws";
-const $ = s => document.querySelector(s);
-let nick = localStorage.getItem("chat-nick");
-if (!nick) {
-  nick = prompt("Qual é seu nome ou apelido?") || "Pessoa";
-  nick = nick.trim().slice(0,30) || "Pessoa";
-  localStorage.setItem("chat-nick",nick);
+const SERVER="wss://arcade-riding-rise-historical.trycloudflare.com";
+const $=s=>document.querySelector(s);
+let nick=localStorage.getItem("chat-nick");
+if(!nick){
+ nick=(prompt("Qual é seu nome ou apelido?")||"Pessoa").trim().slice(0,30)||"Pessoa";
+ localStorage.setItem("chat-nick",nick);
 }
-let ws, retry, seen = new Set();
+let ws,retry,replyTo=null;
+const seen=new Set();
 
-function add(m) {
-  const key = JSON.stringify([m.sender,m.time,m.text]);
-  if (seen.has(key)) return;
-  seen.add(key);
-  const el = document.createElement("div");
-  el.className = "msg" + (m.sender === nick ? " me" : "");
-  const sender = document.createElement("div");
-  sender.className = "sender";
-  sender.textContent = m.sender;
-  const body = document.createElement("div");
-  body.textContent = m.text;
-  const time = document.createElement("div");
-  time.className = "time";
-  time.textContent = m.time;
-  el.append(sender,body,time);
-  $("#messages").append(el);
-  $("#messages").scrollTop = $("#messages").scrollHeight;
+function quoteText(m){
+ return m.kind==="sticker"?"Figurinha":(m.text||"").slice(0,200);
 }
-
-function connect() {
-  $("#status").textContent = "Conectando...";
-  ws = new WebSocket(SERVER);
-  ws.onopen = () => $("#status").textContent = "Conectado";
-  ws.onmessage = ev => {
-    try {
-      const d = JSON.parse(ev.data);
-      if (d.type === "history") d.messages.forEach(add);
-      if (d.type === "message") add(d.message);
-    } catch {}
-  };
-  ws.onclose = () => {
-    $("#status").textContent = "Desconectado · tentando reconectar...";
-    clearTimeout(retry);
-    retry = setTimeout(connect,3000);
-  };
-  ws.onerror = () => ws.close();
+function setReply(m){
+ replyTo={sender:m.sender,text:quoteText(m),kind:m.kind};
+ $("#replytext").textContent="Respondendo a "+m.sender+": "+quoteText(m);
+ $("#replybar").style.display="flex";
+ $("#message").focus();
 }
+$("#cancel").onclick=()=>{
+ replyTo=null;
+ $("#replybar").style.display="none";
+};
 
-$("#form").addEventListener("submit", e => {
+function add(m){
+ const key=m.id||JSON.stringify(m);
+ if(seen.has(key))return;
+ seen.add(key);
+ const el=document.createElement("div");
+ el.className="msg"+(m.sender===nick?" me":"");
+ el.title="Arraste para o lado para responder";
+ const name=document.createElement("div");
+ name.className="sender";
+ name.textContent=m.sender;
+ el.append(name);
+
+ if(m.reply){
+  const q=document.createElement("div");
+  q.className="quote";
+  const b=document.createElement("b");
+  b.textContent=m.reply.sender;
+  const t=document.createElement("span");
+  t.textContent=m.reply.kind==="sticker"?"Figurinha":m.reply.text;
+  q.append(b,t);
+  el.append(q);
+ }
+ if(m.kind==="sticker"&&m.image){
+  const img=document.createElement("img");
+  img.className="sticker";
+  img.alt="Figurinha";
+  img.src=SERVER+m.image;
+  el.append(img);
+ }else{
+  const text=document.createElement("div");
+  text.textContent=m.text||"";
+  el.append(text);
+ }
+ const time=document.createElement("div");
+ time.className="time";
+ time.textContent=m.time||"";
+ el.append(time);
+
+ let startX=0,startY=0;
+ el.addEventListener("touchstart",e=>{
+  startX=e.changedTouches[0].clientX;
+  startY=e.changedTouches[0].clientY;
+ },{passive:true});
+ el.addEventListener("touchend",e=>{
+  const dx=e.changedTouches[0].clientX-startX;
+  const dy=e.changedTouches[0].clientY-startY;
+  if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.3)setReply(m);
+ },{passive:true});
+ el.addEventListener("contextmenu",e=>{
   e.preventDefault();
-  const text = $("#message").value.trim();
-  if (!text) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    $("#status").textContent = "Sem conexão. Aguarda um instante.";
-    return;
-  }
-  ws.send(JSON.stringify({text,sender:nick}));
-  $("#message").value = "";
+  setReply(m);
+ });
+ $("#messages").append(el);
+ $("#messages").scrollTop=$("#messages").scrollHeight;
+}
+
+function connect(){
+ $("#status").textContent="Conectando...";
+ ws=new WebSocket(SERVER+"/ws");
+ ws.onopen=()=>$("#status").textContent="Conectado";
+ ws.onmessage=e=>{
+  try{
+   const d=JSON.parse(e.data);
+   if(d.type==="history")d.messages.forEach(add);
+   if(d.type==="message")add(d.message);
+  }catch{}
+ };
+ ws.onclose=()=>{
+  $("#status").textContent="Desconectado · tentando reconectar...";
+  clearTimeout(retry);
+  retry=setTimeout(connect,3000);
+ };
+ ws.onerror=()=>ws.close();
+}
+$("#form").addEventListener("submit",e=>{
+ e.preventDefault();
+ const text=$("#message").value.trim();
+ if(!text)return;
+ if(!ws||ws.readyState!==WebSocket.OPEN){
+  $("#status").textContent="Sem conexão";
+  return;
+ }
+ const data={action:"text",text,sender:nick};
+ if(replyTo)data.reply=replyTo;
+ ws.send(JSON.stringify(data));
+ $("#message").value="";
+ replyTo=null;
+ $("#replybar").style.display="none";
+});
+$("#emoji").onclick=()=>$("#file").click();
+$("#file").addEventListener("change",()=>{
+ const file=$("#file").files[0];
+ if(!file)return;
+ if(file.size>3*1024*1024){
+  alert("Escolha uma imagem de até 3 MB.");
+  $("#file").value="";
+  return;
+ }
+ if(!ws||ws.readyState!==WebSocket.OPEN){
+  alert("Chat desconectado. Tente novamente.");
+  $("#file").value="";
+  return;
+ }
+ const reader=new FileReader();
+ reader.onload=()=>{
+  ws.send(JSON.stringify({action:"sticker",sender:nick,image:reader.result}));
+  $("#file").value="";
+ };
+ reader.onerror=()=>alert("Não consegui abrir essa imagem.");
+ reader.readAsDataURL(file);
 });
 connect();
 </script>
