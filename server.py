@@ -1,4 +1,4 @@
-import asyncio, json, base64, uuid, mimetypes
+import asyncio, json, base64, uuid, mimetypes, time
 from pathlib import Path
 from datetime import datetime
 from aiohttp import web, WSMsgType
@@ -25,6 +25,35 @@ async def broadcast(data):
             await ws.send_json(data)
         except Exception:
             clients.discard(ws)
+
+async def expire_message(message_id, delay):
+    await asyncio.sleep(max(0, delay))
+    async with lock:
+        target = next(
+            (m for m in messages
+             if m.get("id") == message_id and m.get("temporary")),
+            None
+        )
+        if target is None:
+            return
+        messages.remove(target)
+        image_path = target.get("image", "")
+        HISTORY.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
+
+    if image_path:
+        filename = Path(image_path).name
+        try:
+            (STICKERS / filename).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    await broadcast({"type":"delete","id":message_id})
+
+async def resume_temporary(app):
+    for item in list(messages):
+        if item.get("temporary"):
+            delay = float(item.get("expires_at", 0)) - time.time()
+            asyncio.create_task(expire_message(item["id"], delay))
 
 async def chat(request):
     ws = web.WebSocketResponse(heartbeat=25, max_msg_size=5*1024*1024)
@@ -99,6 +128,9 @@ async def chat(request):
                     name = uuid.uuid4().hex + allowed[mime]
                     (STICKERS / name).write_bytes(raw)
                     item["image"] = "/stickers/" + name
+                    if data.get("temporary") is True:
+                        item["temporary"] = True
+                        item["expires_at"] = time.time() + 5
                 else:
                     continue
 
@@ -107,6 +139,8 @@ async def chat(request):
                     del messages[:-500]
                     HISTORY.write_text(json.dumps(messages, ensure_ascii=False, indent=2))
                 await broadcast({"type":"message","message":item})
+                if item.get("temporary"):
+                    asyncio.create_task(expire_message(item["id"], 5))
             except (ValueError, TypeError, KeyError):
                 continue
     finally:
@@ -114,6 +148,7 @@ async def chat(request):
     return ws
 
 app = web.Application()
+app.on_startup.append(resume_temporary)
 app.router.add_get("/ws", chat)
 app.router.add_static("/stickers/", str(STICKERS), show_index=False)
 web.run_app(app, host="127.0.0.1", port=8080)

@@ -278,10 +278,15 @@ connect();
        return;
      }
 
+     const temporary = confirm(
+       "Como deseja enviar a foto?\n\nOK = Temporária (5 segundos)\nCancelar = Normal"
+     );
+
      ws.send(JSON.stringify({
        action: "sticker",
        sender: nick,
-       image: canvas.toDataURL("image/jpeg", 0.78)
+       image: canvas.toDataURL("image/jpeg", 0.78),
+       temporary
      }));
    } catch (e) {
      alert("Não consegui abrir essa foto. Tenta outra imagem.");
