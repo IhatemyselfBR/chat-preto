@@ -43,7 +43,13 @@ button{border:0;border-radius:50%;width:43px;height:43px;flex-shrink:0;backgroun
 <button id="cancel" type="button" aria-label="Cancelar resposta">×</button>
 </div>
 <form id="form">
-<button id="emoji" type="button" aria-label="Escolher figurinha">🙂</button>
+
+<button type="button" id="emoji" style="display:none">🙂</button>
+<button type="button" id="photoGallery" style="padding:10px;border:0;border-radius:10px;cursor:pointer">🖼️ Galeria</button>
+<button type="button" id="photoCamera" style="padding:10px;border:0;border-radius:10px;cursor:pointer">📷 Câmera</button>
+<input id="galleryFile" type="file" accept="image/*" hidden>
+<input id="cameraFile" type="file" accept="image/*" capture="environment" hidden>
+
 <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
 <input id="message" placeholder="Mensagem..." autocomplete="off" maxlength="2000">
 <button aria-label="Enviar">➤</button>
@@ -186,6 +192,69 @@ $("#file").addEventListener("change",()=>{
  reader.readAsDataURL(file);
 });
 connect();
+
+(() => {
+ const gallery = document.getElementById("galleryFile");
+ const camera = document.getElementById("cameraFile");
+ const galleryBtn = document.getElementById("photoGallery");
+ const cameraBtn = document.getElementById("photoCamera");
+
+ if (!gallery || !camera || !galleryBtn || !cameraBtn) return;
+
+ galleryBtn.onclick = () => gallery.click();
+ cameraBtn.onclick = () => camera.click();
+
+ async function sendPhoto(file) {
+   if (!file) return;
+   if (!file.type.startsWith("image/")) {
+     alert("Escolhe uma imagem, por favor.");
+     return;
+   }
+
+   try {
+     const dataURL = await new Promise((resolve, reject) => {
+       const reader = new FileReader();
+       reader.onerror = reject;
+       reader.onload = () => resolve(reader.result);
+       reader.readAsDataURL(file);
+     });
+
+     const img = await new Promise((resolve, reject) => {
+       const image = new Image();
+       image.onload = () => resolve(image);
+       image.onerror = reject;
+       image.src = dataURL;
+     });
+
+     const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+     const canvas = document.createElement("canvas");
+     canvas.width = Math.max(1, Math.round(img.width * scale));
+     canvas.height = Math.max(1, Math.round(img.height * scale));
+     canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+
+     if (!ws || ws.readyState !== WebSocket.OPEN) {
+       alert("O chat está desconectado. Atualiza a página e tenta de novo.");
+       return;
+     }
+
+     ws.send(JSON.stringify({
+       action: "sticker",
+       sender: nick,
+       image: canvas.toDataURL("image/jpeg", 0.78)
+     }));
+   } catch (e) {
+     alert("Não consegui abrir essa foto. Tenta outra imagem.");
+     console.error(e);
+   } finally {
+     gallery.value = "";
+     camera.value = "";
+   }
+ }
+
+ gallery.onchange = () => sendPhoto(gallery.files[0]);
+ camera.onchange = () => sendPhoto(camera.files[0]);
+})();
+
 </script>
 </body>
 </html>
