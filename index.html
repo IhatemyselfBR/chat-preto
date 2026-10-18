@@ -100,7 +100,7 @@ function add(m){
   const img=document.createElement("img");
   img.className="sticker";
   img.alt="Figurinha";
-  img.src=SERVER+m.image;
+  img.src=SERVER.replace(/^wss:/,"https:")+m.image;
   el.append(img);
  }else{
   const text=document.createElement("div");
