@@ -3,58 +3,97 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Chat</title>
+<title>Conversa</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#0b0b0b;color:#eee;font-family:Arial,sans-serif;height:100dvh;display:flex;justify-content:center}
-.app{width:100%;max-width:520px;display:flex;flex-direction:column;height:100%}
-header{padding:18px;background:#151515;border-bottom:1px solid #252525;font-size:18px}
-#messages{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
-.msg{padding:11px 14px;border-radius:15px;background:#242424;max-width:82%;overflow-wrap:anywhere}
-.me{align-self:flex-end;background:#174b3b}
-small{display:block;text-align:right;color:#aaa;margin-top:5px;font-size:10px}
+body{margin:0;background:#0b0b0b;color:#eee;font-family:Arial,sans-serif}
+.app{max-width:520px;height:100dvh;margin:auto;display:flex;flex-direction:column}
+header{padding:17px;background:#151515;border-bottom:1px solid #292929}
+header strong{font-size:18px}
+#status{font-size:12px;color:#aaa;margin-top:5px}
+#messages{flex:1;overflow:auto;padding:15px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:84%;align-self:flex-start;background:#242424;border-radius:13px;padding:10px 13px;overflow-wrap:anywhere}
+.msg.me{align-self:flex-end;background:#174b3b}
+.sender{font-size:12px;color:#b5d7c8;margin-bottom:5px}
+.time{text-align:right;color:#aaa;font-size:10px;margin-top:5px}
 form{display:flex;gap:8px;padding:12px;background:#151515}
-input{flex:1;min-width:0;border:0;outline:0;border-radius:24px;background:#292929;color:white;padding:14px;font-size:16px}
-button{border:0;border-radius:50%;width:46px;height:46px;background:#eee;color:#111;font-size:20px}
-#notice{padding:8px 14px;color:#999;font-size:12px;text-align:center}
+input{flex:1;min-width:0;border:0;border-radius:25px;padding:14px;background:#292929;color:white;font-size:16px;outline:none}
+button{border:0;border-radius:50%;width:46px;height:46px;background:#eee;font-size:20px}
 </style>
 </head>
 <body>
 <div class="app">
-<header>Conversa</header>
-<div id="notice">Prévia do chat · mensagens locais neste aparelho</div>
+<header>
+<strong>Conversa</strong>
+<div id="status">Conectando...</div>
+</header>
 <div id="messages"></div>
 <form id="form">
-<input id="message" placeholder="Mensagem..." autocomplete="off" required>
+<input id="message" placeholder="Mensagem..." autocomplete="off" maxlength="2000" required>
 <button aria-label="Enviar">➤</button>
 </form>
 </div>
 <script>
-const box=document.querySelector('#messages');
-const input=document.querySelector('#message');
-let messages=[];
-try{messages=JSON.parse(localStorage.getItem('chat-mensagens')||'[]')}catch{}
-function render(){
- box.innerHTML='';
- messages.forEach(m=>{
-  const el=document.createElement('div');
-  el.className='msg '+(m.me?'me':'');
-  const t=document.createElement('div');
-  t.textContent=m.text;
-  const s=document.createElement('small');
-  s.textContent=m.time;
-  el.append(t,s);box.append(el);
- });
- box.scrollTop=box.scrollHeight;
+const SERVER = "wss://arcade-riding-rise-historical.trycloudflare.com/ws";
+const $ = s => document.querySelector(s);
+let nick = localStorage.getItem("chat-nick");
+if (!nick) {
+  nick = prompt("Qual é seu nome ou apelido?") || "Pessoa";
+  nick = nick.trim().slice(0,30) || "Pessoa";
+  localStorage.setItem("chat-nick",nick);
 }
-document.querySelector('#form').addEventListener('submit',e=>{
- e.preventDefault();
- const text=input.value.trim();if(!text)return;
- messages.push({text,me:true,time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})});
- localStorage.setItem('chat-mensagens',JSON.stringify(messages));
- input.value='';render();
+let ws, retry, seen = new Set();
+
+function add(m) {
+  const key = JSON.stringify([m.sender,m.time,m.text]);
+  if (seen.has(key)) return;
+  seen.add(key);
+  const el = document.createElement("div");
+  el.className = "msg" + (m.sender === nick ? " me" : "");
+  const sender = document.createElement("div");
+  sender.className = "sender";
+  sender.textContent = m.sender;
+  const body = document.createElement("div");
+  body.textContent = m.text;
+  const time = document.createElement("div");
+  time.className = "time";
+  time.textContent = m.time;
+  el.append(sender,body,time);
+  $("#messages").append(el);
+  $("#messages").scrollTop = $("#messages").scrollHeight;
+}
+
+function connect() {
+  $("#status").textContent = "Conectando...";
+  ws = new WebSocket(SERVER);
+  ws.onopen = () => $("#status").textContent = "Conectado";
+  ws.onmessage = ev => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.type === "history") d.messages.forEach(add);
+      if (d.type === "message") add(d.message);
+    } catch {}
+  };
+  ws.onclose = () => {
+    $("#status").textContent = "Desconectado · tentando reconectar...";
+    clearTimeout(retry);
+    retry = setTimeout(connect,3000);
+  };
+  ws.onerror = () => ws.close();
+}
+
+$("#form").addEventListener("submit", e => {
+  e.preventDefault();
+  const text = $("#message").value.trim();
+  if (!text) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    $("#status").textContent = "Sem conexão. Aguarda um instante.";
+    return;
+  }
+  ws.send(JSON.stringify({text,sender:nick}));
+  $("#message").value = "";
 });
-render();
+connect();
 </script>
 </body>
 </html>
