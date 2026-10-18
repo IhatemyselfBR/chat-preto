@@ -40,6 +40,25 @@ async def chat(request):
                 data = json.loads(msg.data)
                 sender = str(data.get("sender","Pessoa"))[:30]
                 action = data.get("action","text")
+
+                if action == "delete":
+                    target_id = str(data.get("id",""))
+                    async with lock:
+                        target = next(
+                            (m for m in messages
+                             if m.get("id") == target_id
+                             and m.get("sender") == sender),
+                            None
+                        )
+                        if target is None:
+                            continue
+                        messages.remove(target)
+                        HISTORY.write_text(
+                            json.dumps(messages, ensure_ascii=False, indent=2)
+                        )
+                    await broadcast({"type":"delete","id":target_id})
+                    continue
+
                 item = {
                     "id": uuid.uuid4().hex,
                     "sender": sender,

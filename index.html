@@ -86,6 +86,7 @@ function add(m){
  seen.add(key);
  const el=document.createElement("div");
  el.className="msg"+(m.sender===nick?" me":"");
+ el.dataset.messageId=m.id||"";
  el.title="Arraste para o lado para responder";
  const name=document.createElement("div");
  name.className="sender";
@@ -118,6 +119,24 @@ function add(m){
  time.textContent=m.time||"";
  el.append(time);
 
+ if(m.sender===nick && m.id){
+  const del=document.createElement("button");
+  del.type="button";
+  del.textContent="🗑️";
+  del.title="Apagar mensagem";
+  del.setAttribute("aria-label","Apagar mensagem");
+  del.style.cssText="border:0;background:transparent;cursor:pointer;padding:5px;font-size:16px";
+  del.addEventListener("click",()=>{
+   if(!confirm("Apagar esta mensagem para os dois?"))return;
+   if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify({action:"delete",id:m.id,sender:nick}));
+   }else{
+    alert("Chat desconectado. Tenta novamente.");
+   }
+  });
+  el.append(del);
+ }
+
  let startX=0,startY=0;
  el.addEventListener("touchstart",e=>{
   startX=e.changedTouches[0].clientX;
@@ -145,6 +164,13 @@ function connect(){
    const d=JSON.parse(e.data);
    if(d.type==="history")d.messages.forEach(add);
    if(d.type==="message")add(d.message);
+   if(d.type==="delete"){
+    const el=[...$("#messages").children].find(
+     item=>item.dataset.messageId===d.id
+    );
+    if(el)el.remove();
+    seen.delete(d.id);
+   }
   }catch{}
  };
  ws.onclose=()=>{
